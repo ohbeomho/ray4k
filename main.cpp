@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -6,21 +8,31 @@
 #include <string>
 #include <vector>
 
+#define WINDOW_WIDTH 2000
+#define WINDOW_HEIGHT 1500
+// px/s
+#define SCROLL_SPEED 3000
+#define GREAT 50
+#define GOOD 100
+#define BAD 130
+#define MISS 200
+
 using namespace std;
 using namespace std::filesystem;
 
 bool startsWith(string str, string prefix) { return str.rfind(prefix) == 0; }
 
-class HitObject {
+class Note {
 public:
-  int startTime, endTime;
-  int lane;
-  int y = -30;
+  int startTime, endTime, lane;
+  bool pressed = false;
+  double y;
 
-  HitObject(int _st, int _et, int _lane) {
+  Note(int _st, int _et, int _lane) {
     startTime = _st;
     endTime = _et;
     lane = _lane;
+    y = -(startTime / 1000.0 * SCROLL_SPEED) + WINDOW_HEIGHT - 400;
   }
 };
 
@@ -28,25 +40,25 @@ class Beatmap {
 public:
   int startOffset, bpm;
   string title, artist, creator, diffName, musicPath;
-  vector<HitObject> hitObjects;
+  vector<Note> notes;
 
   Beatmap(path filePath) {
     ifstream file(filePath.string().data());
-    bool isHitObjects = false;
+    bool isNotes = false;
 
     if (file.is_open()) {
       string line;
       int c = -1;
 
       while (getline(file, line)) {
-        if (isHitObjects) {
+        if (isNotes) {
           if (startsWith(line, "-")) {
-            hitObjects.push_back(HitObject(stoi(line.substr(13)), -1, -1));
+            notes.push_back(Note(stoi(line.substr(13)), -1, -1));
             c++;
           } else if (startsWith(line, "  EndTime: "))
-            hitObjects[c].endTime = stoi(line.substr(11));
+            notes[c].endTime = stoi(line.substr(11));
           else if (startsWith(line, "  Lane: "))
-            hitObjects[c].lane = stoi(line.substr(8));
+            notes[c].lane = stoi(line.substr(8));
         } else {
           if (startsWith(line, "Mode: ") && line.substr(6) != "Keys4")
             throw "Ray4k only supports 4k maps.";
@@ -65,11 +77,11 @@ public:
           else if (startsWith(line, "  Bpm: "))
             bpm = stoi(line.substr(7));
           else if (line == "HitObjects:")
-            isHitObjects = true;
+            isNotes = true;
         }
       }
 
-      reverse(hitObjects.begin(), hitObjects.end());
+      reverse(notes.begin(), notes.end());
     }
   }
 };
@@ -78,11 +90,6 @@ class Mapset {
 public:
   vector<Beatmap> maps;
 };
-
-#define WINDOW_WIDTH 2000
-#define WINDOW_HEIGHT 1500
-// px/s
-#define SCROLL_SPEED 3000
 
 int main(void) {
   InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Ray4K");
@@ -116,11 +123,12 @@ int main(void) {
   float timePlayed = 0.0f;
   float beatTime;
   Beatmap *currentMap = NULL;
-  vector<HitObject> hitObjects;
-  vector<HitObject> visibleObjects;
+  vector<Note> notes, longNotes;
+  string prevJudge = "";
   Music music;
+  int keys[4] = {KEY_D, KEY_F, KEY_J, KEY_K};
 
-  // TODO: Implement actual gameplay
+  // TODO: Fix gameplay
   while (!WindowShouldClose()) {
     if (playing && !IsMusicStreamPlaying(music) && IsMusicReady(music)) {
       SetMusicVolume(music, 0.15f);
@@ -131,17 +139,40 @@ int main(void) {
       timePlayed = GetMusicTimePlayed(music);
 
       int i;
-      for (i = hitObjects.size() - 1; i >= 0; i--) {
-        if (hitObjects[i].startTime <=
-            timePlayed * 1000 +
-                ((float)(WINDOW_HEIGHT - 520) / SCROLL_SPEED) * 1000) {
-          visibleObjects.push_back(hitObjects[i]);
-          hitObjects.pop_back();
-        }
-      }
 
-      for (HitObject &obj : visibleObjects) {
-        obj.y += 1.0f / 240 * SCROLL_SPEED;
+      bool pressedLane[4] = {false};
+      for (i = 0; i < notes.size(); i++) {
+        Note &note = notes[i];
+        // note.y += 1.0 / 240 * SCROLL_SPEED;
+        if (timePlayed > note.startTime)
+          continue;
+        else if ((timePlayed + ((float)WINDOW_HEIGHT / SCROLL_SPEED)) * 1000 <
+                 note.startTime)
+          continue;
+
+        note.y =
+            -((note.startTime - timePlayed * 1000) / 1000.0 * SCROLL_SPEED) +
+            WINDOW_HEIGHT - 400;
+
+        if (IsKeyDown(keys[note.lane - 1]) && !pressedLane[note.lane - 1]) {
+          int timeDiff = abs(note.startTime - (int)timePlayed * 1000);
+
+          if (timeDiff > MISS) {
+            continue;
+          }
+
+          pressedLane[note.lane - 1] = true;
+          note.pressed = true;
+          if (timeDiff < GREAT) {
+            prevJudge = "GREAT";
+          } else if (timeDiff < GOOD) {
+            prevJudge = "GOOD";
+          } else if (timeDiff < BAD) {
+            prevJudge = "BAD";
+          } else if (timeDiff < MISS) {
+            prevJudge = "MISS";
+          }
+        }
       }
 
       if (timePlayed >= GetMusicTimeLength(music) - beatTime) {
@@ -151,24 +182,27 @@ int main(void) {
 
       BeginDrawing();
       ClearBackground(BLACK);
+      DrawText(prevJudge.c_str(), 10, 10, 70, WHITE);
       DrawRectangle(WINDOW_WIDTH / 4, WINDOW_HEIGHT - 280, WINDOW_WIDTH / 2,
                     280, LIGHTGRAY);
       DrawRectangle(WINDOW_WIDTH / 4, WINDOW_HEIGHT - 400, WINDOW_WIDTH / 2,
                     120, GRAY);
-      for (i = 0; i < visibleObjects.size(); i++) {
-        HitObject obj = visibleObjects[i];
-        if (obj.endTime != -1) {
+      for (i = 0; i < notes.size(); i++) {
+        Note note = notes[i];
+        if (note.y > WINDOW_HEIGHT || note.y < -30 || note.pressed)
+          continue;
+        if (note.endTime != -1) {
           DrawRectangle(
               WINDOW_WIDTH / 2 - WINDOW_WIDTH / 4 +
-                  (obj.lane - 1) * WINDOW_WIDTH / 8,
-              obj.y - (obj.endTime - obj.startTime) / 1000 * SCROLL_SPEED,
+                  (note.lane - 1) * WINDOW_WIDTH / 8,
+              note.y - (note.endTime - note.startTime) / 1000.0 * SCROLL_SPEED,
               WINDOW_WIDTH / 8,
-              (obj.endTime - obj.startTime) / 1000 * SCROLL_SPEED, LIGHTGRAY);
+              (note.endTime - note.startTime) / 1000 * SCROLL_SPEED, LIGHTGRAY);
         }
 
         DrawRectangle(WINDOW_WIDTH / 2 - WINDOW_WIDTH / 4 +
-                          (obj.lane - 1) * WINDOW_WIDTH / 8,
-                      obj.y, WINDOW_WIDTH / 8, 120, WHITE);
+                          (note.lane - 1) * WINDOW_WIDTH / 8,
+                      round(note.y), WINDOW_WIDTH / 8, 120, WHITE);
       }
       EndDrawing();
     } else {
@@ -190,7 +224,7 @@ int main(void) {
               currentMap = &map;
               music = LoadMusicStream(map.musicPath.c_str());
               beatTime = 60.0f / map.bpm;
-              hitObjects = map.hitObjects;
+              notes = map.notes;
             }
           }
 
