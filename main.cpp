@@ -12,14 +12,14 @@
 #define WINDOW_HEIGHT 1500
 
 // px/s
-#define SCROLL_SPEED 3000
+#define SCROLL_SPEED 2800
 
 // Hit window
 // ms
-#define GREAT 55
-#define GOOD 85
-#define BAD 130
-#define MISS 200
+#define GREAT 70
+#define GOOD 120
+#define BAD 190
+#define MISS 230
 
 using namespace std;
 using namespace std::filesystem;
@@ -164,11 +164,12 @@ int main(void) {
         int startTimeDiff = note.startTime - (int)(timePlayed * 1000);
         if (startTimeDiff < -BAD && startTimeDiff >= -MISS && !note.pressed) {
           judgements[3]++;
+          prevJudge = 3;
+          note.judged = true;
           judgeUpdated = timePlayed;
-          if (note.endTime == -1)
-            note.judged = true;
         }
 
+        // Note judge
         if (IsKeyPressed(keys[note.lane - 1]) && !pressedLane[note.lane - 1]) {
           startTimeDiff = abs(startTimeDiff);
           if (startTimeDiff > MISS)
@@ -193,11 +194,13 @@ int main(void) {
           judgeUpdated = timePlayed;
         }
 
+        // Long note release judge
         if (note.endTime != -1 && note.pressed) {
           int endTimeDiff = note.endTime - (int)(timePlayed * 1000);
           if (endTimeDiff < -BAD && endTimeDiff >= -MISS &&
               IsKeyDown(keys[note.lane - 1])) {
             judgements[3]++;
+            prevJudge = 3;
             judgeUpdated = timePlayed;
             note.judged = true;
           }
@@ -205,6 +208,7 @@ int main(void) {
           if (IsKeyReleased(keys[note.lane - 1])) {
             if (endTimeDiff > MISS) {
               judgements[3]++;
+              prevJudge = 3;
               judgeUpdated = timePlayed;
               note.judged = true;
               continue;
@@ -235,14 +239,13 @@ int main(void) {
         playing = false;
       }
 
-      int fps = GetFPS();
-
       BeginDrawing();
 
       ClearBackground(BLACK);
 
       // FPS
-      DrawText(to_string(fps).c_str(), WINDOW_WIDTH - 100, 5, 40, LIGHTGRAY);
+      DrawText(to_string(GetFPS()).c_str(), WINDOW_WIDTH - 100, 5, 40,
+               LIGHTGRAY);
 
       // Judgements
       for (i = 0; i < 4; i++)
@@ -252,6 +255,9 @@ int main(void) {
       // Notes
       for (i = 0; i < notes.size(); i++) {
         Note note = notes[i];
+
+        if (note.y == -1000)
+          break;
 
         // Long Notes
         if (!note.judged && note.endTime != -1) {
@@ -263,6 +269,15 @@ int main(void) {
                         (note.endTime - note.startTime) / 1000.0 * SCROLL_SPEED,
                         LIGHTGRAY);
         }
+      }
+
+      for (i = 0; i < 4; i++)
+        DrawRectangle(WINDOW_WIDTH / 4 + (WINDOW_WIDTH / 8) * i,
+                      WINDOW_HEIGHT - 300, WINDOW_WIDTH / 8, 120,
+                      IsKeyDown(keys[i]) ? YELLOW : GRAY);
+
+      for (i = 0; i < notes.size(); i++) {
+        Note note = notes[i];
 
         if (note.y > WINDOW_HEIGHT || note.judged)
           continue;
@@ -274,10 +289,6 @@ int main(void) {
                       note.y, WINDOW_WIDTH / 8, 120, WHITE);
       }
 
-      for (i = 0; i < 4; i++)
-        DrawRectangle(WINDOW_WIDTH / 4 + (WINDOW_WIDTH / 8) * i,
-                      WINDOW_HEIGHT - 300, WINDOW_WIDTH / 8, 120,
-                      IsKeyDown(keys[i]) ? YELLOW : GRAY);
       DrawRectangle(WINDOW_WIDTH / 4, WINDOW_HEIGHT - 180, WINDOW_WIDTH / 2,
                     180, LIGHTGRAY);
 
@@ -294,7 +305,10 @@ int main(void) {
       int mouseX = GetMouseX(), mouseY = GetMouseY();
 
       BeginDrawing();
+
       ClearBackground(BLACK);
+
+      // Show maps
       int y = 10;
       for (Mapset mapset : mapsets) {
         for (Beatmap map : mapset.maps) {
@@ -317,6 +331,7 @@ int main(void) {
           y += 60;
         }
       }
+
       EndDrawing();
     }
   }
