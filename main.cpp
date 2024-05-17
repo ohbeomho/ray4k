@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -8,12 +7,17 @@
 #include <string>
 #include <vector>
 
+// Window size
 #define WINDOW_WIDTH 2000
 #define WINDOW_HEIGHT 1500
+
 // px/s
 #define SCROLL_SPEED 3000
-#define GREAT 50
-#define GOOD 100
+
+// Hit window
+// ms
+#define GREAT 55
+#define GOOD 85
 #define BAD 130
 #define MISS 200
 
@@ -25,14 +29,14 @@ bool startsWith(string str, string prefix) { return str.rfind(prefix) == 0; }
 class Note {
 public:
   int startTime, endTime, lane;
-  bool pressed = false;
+  bool judged = false, pressed = false;
   double y;
 
   Note(int _st, int _et, int _lane) {
     startTime = _st;
     endTime = _et;
     lane = _lane;
-    y = -(startTime / 1000.0 * SCROLL_SPEED) + WINDOW_HEIGHT - 400;
+    y = -1000;
   }
 };
 
@@ -80,8 +84,6 @@ public:
             isNotes = true;
         }
       }
-
-      reverse(notes.begin(), notes.end());
     }
   }
 };
@@ -94,9 +96,8 @@ public:
 int main(void) {
   InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Ray4K");
   InitAudioDevice();
-  SetTargetFPS(240);
+  SetTargetFPS(500);
 
-  // TODO: Load songs from 'songs' folder
   path songsPath("./songs");
   vector<Mapset> mapsets;
 
@@ -121,15 +122,20 @@ int main(void) {
 
   bool playing = false;
   float timePlayed = 0.0f;
+  float judgeUpdated = 0.0f;
   float beatTime;
   Beatmap *currentMap = NULL;
   vector<Note> notes, longNotes;
-  string prevJudge = "";
   Music music;
   int keys[4] = {KEY_D, KEY_F, KEY_J, KEY_K};
+  int judgements[4] = {0};
+  int prevJudge = -1;
+  string judgeTexts[4] = {"GREAT", "GOOD", "BAD", "MISS"};
+  Color judgeColors[4] = {SKYBLUE, GREEN, DARKGRAY, RED};
 
-  // TODO: Fix gameplay
+  // TODO: Make result screen
   while (!WindowShouldClose()) {
+
     if (playing && !IsMusicStreamPlaying(music) && IsMusicReady(music)) {
       SetMusicVolume(music, 0.15f);
       PlayMusicStream(music);
@@ -137,40 +143,89 @@ int main(void) {
       UpdateMusicStream(music);
 
       timePlayed = GetMusicTimePlayed(music);
-
       int i;
-
       bool pressedLane[4] = {false};
+
+      if (timePlayed - judgeUpdated > 0.5f)
+        prevJudge = -1;
+
       for (i = 0; i < notes.size(); i++) {
         Note &note = notes[i];
-        // note.y += 1.0 / 240 * SCROLL_SPEED;
-        if (timePlayed > note.startTime)
-          continue;
-        else if ((timePlayed + ((float)WINDOW_HEIGHT / SCROLL_SPEED)) * 1000 <
-                 note.startTime)
+        if ((timePlayed * 1000 + ((float)WINDOW_HEIGHT / SCROLL_SPEED)) * 1000 <
+            note.startTime)
+          break;
+        else if (timePlayed > note.startTime || note.judged)
           continue;
 
         note.y =
             -((note.startTime - timePlayed * 1000) / 1000.0 * SCROLL_SPEED) +
-            WINDOW_HEIGHT - 400;
+            WINDOW_HEIGHT - 300;
 
-        if (IsKeyDown(keys[note.lane - 1]) && !pressedLane[note.lane - 1]) {
-          int timeDiff = abs(note.startTime - (int)timePlayed * 1000);
+        int startTimeDiff = note.startTime - (int)(timePlayed * 1000);
+        if (startTimeDiff < -BAD && startTimeDiff >= -MISS && !note.pressed) {
+          judgements[3]++;
+          judgeUpdated = timePlayed;
+          if (note.endTime == -1)
+            note.judged = true;
+        }
 
-          if (timeDiff > MISS) {
+        if (IsKeyPressed(keys[note.lane - 1]) && !pressedLane[note.lane - 1]) {
+          startTimeDiff = abs(startTimeDiff);
+          if (startTimeDiff > MISS)
             continue;
-          }
 
           pressedLane[note.lane - 1] = true;
-          note.pressed = true;
-          if (timeDiff < GREAT) {
-            prevJudge = "GREAT";
-          } else if (timeDiff < GOOD) {
-            prevJudge = "GOOD";
-          } else if (timeDiff < BAD) {
-            prevJudge = "BAD";
-          } else if (timeDiff < MISS) {
-            prevJudge = "MISS";
+          if (note.endTime == -1)
+            note.judged = true;
+          else
+            note.pressed = true;
+
+          if (startTimeDiff <= GREAT)
+            prevJudge = 0;
+          else if (startTimeDiff <= GOOD)
+            prevJudge = 1;
+          else if (startTimeDiff <= BAD)
+            prevJudge = 2;
+          else if (startTimeDiff < MISS)
+            prevJudge = 3;
+
+          judgements[prevJudge]++;
+          judgeUpdated = timePlayed;
+        }
+
+        if (note.endTime != -1 && note.pressed) {
+          int endTimeDiff = note.endTime - (int)(timePlayed * 1000);
+          if (endTimeDiff < -BAD && endTimeDiff >= -MISS &&
+              IsKeyDown(keys[note.lane - 1])) {
+            judgements[3]++;
+            judgeUpdated = timePlayed;
+            note.judged = true;
+          }
+
+          if (IsKeyReleased(keys[note.lane - 1])) {
+            if (endTimeDiff > MISS) {
+              judgements[3]++;
+              judgeUpdated = timePlayed;
+              note.judged = true;
+              continue;
+            }
+
+            endTimeDiff = abs(endTimeDiff);
+
+            pressedLane[note.lane - 1] = true;
+            note.judged = true;
+
+            if (endTimeDiff <= GREAT)
+              prevJudge = 0;
+            else if (endTimeDiff <= GOOD)
+              prevJudge = 1;
+            else if (endTimeDiff <= BAD)
+              prevJudge = 2;
+            else if (endTimeDiff < MISS)
+              prevJudge = 3;
+
+            judgements[prevJudge]++;
+            judgeUpdated = timePlayed;
           }
         }
       }
@@ -180,30 +235,60 @@ int main(void) {
         playing = false;
       }
 
+      int fps = GetFPS();
+
       BeginDrawing();
+
       ClearBackground(BLACK);
-      DrawText(prevJudge.c_str(), 10, 10, 70, WHITE);
-      DrawRectangle(WINDOW_WIDTH / 4, WINDOW_HEIGHT - 280, WINDOW_WIDTH / 2,
-                    280, LIGHTGRAY);
-      DrawRectangle(WINDOW_WIDTH / 4, WINDOW_HEIGHT - 400, WINDOW_WIDTH / 2,
-                    120, GRAY);
+
+      // FPS
+      DrawText(to_string(fps).c_str(), WINDOW_WIDTH - 100, 5, 40, LIGHTGRAY);
+
+      // Judgements
+      for (i = 0; i < 4; i++)
+        DrawText((judgeTexts[i] + " " + to_string(judgements[i])).c_str(), 10,
+                 10 + 60 * i, 55, judgeColors[i]);
+
+      // Notes
       for (i = 0; i < notes.size(); i++) {
         Note note = notes[i];
-        if (note.y > WINDOW_HEIGHT || note.y < -30 || note.pressed)
-          continue;
-        if (note.endTime != -1) {
-          DrawRectangle(
-              WINDOW_WIDTH / 2 - WINDOW_WIDTH / 4 +
-                  (note.lane - 1) * WINDOW_WIDTH / 8,
-              note.y - (note.endTime - note.startTime) / 1000.0 * SCROLL_SPEED,
-              WINDOW_WIDTH / 8,
-              (note.endTime - note.startTime) / 1000 * SCROLL_SPEED, LIGHTGRAY);
+
+        // Long Notes
+        if (!note.judged && note.endTime != -1) {
+          DrawRectangle(WINDOW_WIDTH / 2 - WINDOW_WIDTH / 4 +
+                            (note.lane - 1) * WINDOW_WIDTH / 8,
+                        note.y - (note.endTime - note.startTime) / 1000.0 *
+                                     SCROLL_SPEED,
+                        WINDOW_WIDTH / 8,
+                        (note.endTime - note.startTime) / 1000.0 * SCROLL_SPEED,
+                        LIGHTGRAY);
         }
+
+        if (note.y > WINDOW_HEIGHT || note.judged)
+          continue;
+        else if (note.y == -1000)
+          break;
 
         DrawRectangle(WINDOW_WIDTH / 2 - WINDOW_WIDTH / 4 +
                           (note.lane - 1) * WINDOW_WIDTH / 8,
-                      round(note.y), WINDOW_WIDTH / 8, 120, WHITE);
+                      note.y, WINDOW_WIDTH / 8, 120, WHITE);
       }
+
+      for (i = 0; i < 4; i++)
+        DrawRectangle(WINDOW_WIDTH / 4 + (WINDOW_WIDTH / 8) * i,
+                      WINDOW_HEIGHT - 300, WINDOW_WIDTH / 8, 120,
+                      IsKeyDown(keys[i]) ? YELLOW : GRAY);
+      DrawRectangle(WINDOW_WIDTH / 4, WINDOW_HEIGHT - 180, WINDOW_WIDTH / 2,
+                    180, LIGHTGRAY);
+
+      // Previous Judgement
+      if (prevJudge != -1) {
+        DrawText(judgeTexts[prevJudge].c_str(),
+                 WINDOW_WIDTH / 2 -
+                     MeasureText(judgeTexts[prevJudge].c_str(), 80) / 2,
+                 WINDOW_HEIGHT / 2, 80, judgeColors[prevJudge]);
+      }
+
       EndDrawing();
     } else {
       int mouseX = GetMouseX(), mouseY = GetMouseY();
