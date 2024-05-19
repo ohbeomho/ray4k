@@ -10,9 +10,16 @@
 #define WINDOW_WIDTH 2000
 #define WINDOW_HEIGHT 1500
 
-// px/s
-#define SCROLL_SPEED 2800
+#define SCROLL_SPEED 3000
 
+class Hit {
+public:
+  Judgement judgement;
+  int hitDiff;
+  float alpha = 255.0f;
+};
+
+// TODO: Make able to customize (set offset, colors, etc.)
 int main(void) {
   InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Ray4K");
   InitAudioDevice();
@@ -22,14 +29,14 @@ int main(void) {
   vector<Mapset> mapsets = loadMaps(path("./songs"));
 
   bool playing = false;
-  float timePlayed = 0.0f, judgeUpdated = 0.0f, diffUpdated = 0.0f, beatTime;
+  float timePlayed = 0.0f, judgeUpdated = -1.0f, diffUpdated = -1.0f, beatTime;
   Beatmap *currentMap = NULL;
   vector<Note> notes, longNotes;
   Music music;
 
   int keys[4] = {KEY_D, KEY_F, KEY_J, KEY_K};
-  // Only GOOD, BAD
-  int prevHitDiff = 0;
+  vector<Hit> hits;
+  int prevGoodBadHit, hitCount = 0;
 
   map<Judgement, int> judgements;
   map<Judgement, pair<string, Color>> judgementInfo;
@@ -39,24 +46,38 @@ int main(void) {
   judgementInfo[Judgement::MISS] = make_pair("MISS", RED);
 
   Judgement prevJudge = Judgement::GHOST;
-  int score = 0;
+  long score = 0;
+  int combo = 0;
 
-  auto judge = [&prevJudge, &prevHitDiff, &judgements, &judgeUpdated, &score,
-                &timePlayed, &judgementInfo, &diffUpdated](int hitDiff) {
+  // ms
+  int offset = 60;
+
+  auto judge = [&prevJudge, &hits, &judgements, &judgeUpdated, &score,
+                &timePlayed, &judgementInfo, &diffUpdated, &prevGoodBadHit,
+                &hitCount, &combo](int hitDiff) {
     int absHitDiff = abs(hitDiff);
     Judgement judge = calcScore(absHitDiff);
 
     if (judge != Judgement::GHOST) {
-      score += (int)prevJudge;
-      judgements[prevJudge]++;
+      if (judge != Judgement::MISS) {
+        hits[hitCount].judgement = judge;
+        hits[hitCount].hitDiff = hitDiff;
+
+        if (judge != Judgement::GREAT) {
+          prevGoodBadHit = hitCount;
+          diffUpdated = timePlayed;
+        }
+
+        hitCount++;
+        combo++;
+
+        score += (int)judge * combo;
+      } else
+        combo = 0;
 
       prevJudge = judge;
       judgeUpdated = timePlayed;
-
-      if (prevJudge != Judgement::GREAT && prevJudge != Judgement::MISS) {
-        prevHitDiff = hitDiff;
-        diffUpdated = timePlayed;
-      }
+      judgements[prevJudge]++;
     }
 
     return judge;
@@ -76,18 +97,18 @@ int main(void) {
 
       for (i = 0; i < notes.size(); i++) {
         Note &note = notes[i];
-        if ((timePlayed * 1000 + ((float)WINDOW_HEIGHT / SCROLL_SPEED)) * 1000 <
-            note.startTime)
+        if ((timePlayed + ((float)WINDOW_HEIGHT / SCROLL_SPEED)) <
+            note.startTime / 1000.0)
           break;
         else if (timePlayed > note.startTime || note.judged ||
                  pressedLane[note.lane - 1])
           continue;
 
-        note.y =
-            -((note.startTime - timePlayed * 1000) / 1000.0 * SCROLL_SPEED) +
-            WINDOW_HEIGHT - 300;
+        note.y = WINDOW_HEIGHT - 300 -
+                 ((note.startTime / 1000.0 - timePlayed + offset / 1000.0) *
+                  SCROLL_SPEED);
 
-        int startTimeDiff = (int)(timePlayed * 1000) - note.startTime;
+        int startTimeDiff = (int)(timePlayed * 1000) - note.startTime - offset;
         if (startTimeDiff > (int)JudgementHitWindow::BAD &&
             startTimeDiff < (int)JudgementHitWindow::MISS && !note.pressed) {
           judge(startTimeDiff);
@@ -109,7 +130,7 @@ int main(void) {
 
         // Long note release judge
         if (note.endTime != -1 && note.pressed) {
-          int endTimeDiff = (int)(timePlayed * 1000) - note.endTime;
+          int endTimeDiff = (int)(timePlayed * 1000) - note.endTime - offset;
           if (endTimeDiff > (int)JudgementHitWindow::BAD &&
               endTimeDiff < (int)JudgementHitWindow::MISS &&
               IsKeyDown(keys[note.lane - 1])) {
@@ -198,7 +219,7 @@ int main(void) {
       }
 
       DrawRectangle(WINDOW_WIDTH / 4, WINDOW_HEIGHT - 180, WINDOW_WIDTH / 2,
-                    180, LIGHTGRAY);
+                    180, Color{180, 180, 180, 255});
 
       // Previous Judgement
       if (timePlayed - judgeUpdated <= 0.6f) {
@@ -213,17 +234,55 @@ int main(void) {
             WINDOW_HEIGHT / 2, fontSize, judgementInfo[prevJudge].second);
       }
 
-      // Early/Late
+      // Combo
+      if (combo > 0) {
+        int fontSize = 70 + (0.2f - (timePlayed - judgeUpdated)) * 100;
+        if (fontSize < 70)
+          fontSize = 70;
+
+        DrawText(to_string(combo).c_str(),
+                 WINDOW_WIDTH / 2 -
+                     MeasureText(to_string(combo).c_str(), fontSize) / 2,
+                 WINDOW_HEIGHT / 3, fontSize, Color{255, 255, 100, 255});
+      }
+
+      // Early/Late (Only shows in GOOD, BAD)
       if (timePlayed - diffUpdated <= 0.6f) {
-        int fontSize = 60 + (0.2f - (timePlayed - diffUpdated)) * 100;
+        int fontSize = 60 + (0.2f - (timePlayed - diffUpdated)) * 100,
+            prevHitDiff = hits[prevGoodBadHit].hitDiff;
         if (fontSize <= 60)
           fontSize = 60;
+
         string text = (prevHitDiff > 0 ? "LATE " : "EARLY ") +
                       to_string(abs(prevHitDiff)) + "ms";
+
         DrawText(text.c_str(),
                  WINDOW_WIDTH / 2 - MeasureText(text.c_str(), fontSize) / 2,
                  WINDOW_HEIGHT / 2 - fontSize - 10, fontSize,
                  prevHitDiff > 0 ? Color{150, 20, 20, 255} : LIME);
+      }
+
+      // Hit error meter
+      int judgeHitWindows[3] = {(int)JudgementHitWindow::GREAT,
+                                (int)JudgementHitWindow::GOOD,
+                                (int)JudgementHitWindow::BAD};
+      for (i = 2; i >= 0; i--) {
+        Color color = judgementInfo[(Judgement)judges[i]].second;
+        color.a = 200;
+        DrawRectangle(WINDOW_WIDTH / 2 - (int)judgeHitWindows[i] * 2,
+                      WINDOW_HEIGHT - 70, (int)judgeHitWindows[i] * 4, 20,
+                      color);
+      }
+
+      for (i = 0; i < hitCount; i++) {
+        if (hits[i].alpha <= 0)
+          continue;
+
+        Color color = judgementInfo[hits[i].judgement].second;
+        color.a = hits[i].alpha;
+        hits[i].alpha -= 255.0f / 3 * GetFrameTime();
+        DrawRectangle(WINDOW_WIDTH / 2 + hits[i].hitDiff * 2 - 5,
+                      WINDOW_HEIGHT - 100, 10, 80, color);
       }
 
       EndDrawing();
@@ -250,6 +309,7 @@ int main(void) {
               music = LoadMusicStream(map.musicPath.c_str());
               beatTime = 60.0f / map.bpm;
               notes = map.notes;
+              hits.resize(notes.size() + map.longNoteCount);
             }
           }
 
