@@ -45,7 +45,7 @@ int main(void) {
 
   int keys[4] = {KEY_D, KEY_F, KEY_J, KEY_K};
   vector<Hit> hits;
-  int prevGoodBadHit, hitCount = 0;
+  int prevGoodBadHit, hitCount;
 
   map<Judgement, int> judgements;
   map<Judgement, pair<string, Color>> judgementInfo;
@@ -54,10 +54,10 @@ int main(void) {
   judgementInfo[Judgement::BAD] = make_pair("BAD", DARKGRAY);
   judgementInfo[Judgement::MISS] = make_pair("MISS", RED);
 
-  Judgement prevJudge = Judgement::GHOST;
-  long score = 0;
-  int combo = 0;
-  float wait = 1.5f;
+  Judgement prevJudge;
+  long score;
+  int combo;
+  float wait;
 
   // ms
   int offset = 60;
@@ -345,6 +345,18 @@ int main(void) {
               music = LoadMusicStream(map.musicPath.c_str());
               notes = map.notes;
               hits.resize(notes.size() + map.longNoteCount);
+              timePlayed = -1.5f;
+              judgeUpdated = -1.0f;
+              diffUpdated = -1.0f;
+              wait = 1.5f;
+              combo = 0;
+              score = 0l;
+              hitCount = 0;
+              judgements[Judgement::GREAT] = 0;
+              judgements[Judgement::GOOD] = 0;
+              judgements[Judgement::BAD] = 0;
+              judgements[Judgement::MISS] = 0;
+              stop = false;
               playing = true;
             }
           }
