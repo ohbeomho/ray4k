@@ -16,4 +16,4 @@ judge.o:
 	$(CXX) -c judge.cpp $(INC) $(LIBS)
 
 clean:
-	rm *.o
+	del *.o
