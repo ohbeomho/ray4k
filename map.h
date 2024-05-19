@@ -22,7 +22,7 @@ public:
 class Beatmap {
 public:
   string title, artist, creator, diffName, musicPath;
-  int bpm;
+  int bpm, longNoteCount = 0;
   vector<Note> notes;
 
   Beatmap(path filePath);
