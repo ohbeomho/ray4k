@@ -2,6 +2,7 @@
 #include "map.hpp"
 #include <cmath>
 #include <cstdlib>
+#include <iostream>
 #include <map>
 #include <raylib.h>
 #include <string>
@@ -25,11 +26,19 @@ int main(void) {
   InitAudioDevice();
   SetTargetFPS(500);
 
-  // Load maps
-  vector<Mapset> mapsets = loadMaps(path("./songs"));
+  const char *message = NULL;
 
-  bool playing = false;
-  float timePlayed = 0.0f, judgeUpdated = -1.0f, diffUpdated = -1.0f, beatTime;
+  // Load maps
+  vector<Mapset> mapsets;
+  try {
+    mapsets = loadMaps(path("./songs"));
+  } catch (const char *errMsg) {
+    message = errMsg;
+    return 1;
+  }
+
+  bool playing = false, stop = false, pause = false;
+  float timePlayed = -1.5f, judgeUpdated = -1.0f, diffUpdated = -1.0f;
   Beatmap *currentMap = NULL;
   vector<Note> notes, longNotes;
   Music music;
@@ -48,6 +57,7 @@ int main(void) {
   Judgement prevJudge = Judgement::GHOST;
   long score = 0;
   int combo = 0;
+  float wait = 1.5f;
 
   // ms
   int offset = 60;
@@ -58,40 +68,72 @@ int main(void) {
     int absHitDiff = abs(hitDiff);
     Judgement judge = calcScore(absHitDiff);
 
-    if (judge != Judgement::GHOST) {
-      if (judge != Judgement::MISS) {
-        hits[hitCount].judgement = judge;
-        hits[hitCount].hitDiff = hitDiff;
+    if (judge == Judgement::GHOST)
+      return judge;
 
-        if (judge != Judgement::GREAT) {
-          prevGoodBadHit = hitCount;
-          diffUpdated = timePlayed;
-        }
+    if (judge != Judgement::MISS) {
+      if (judge != Judgement::GREAT) {
+        prevGoodBadHit = hitCount;
+        diffUpdated = timePlayed;
+      }
 
-        hitCount++;
-        combo++;
+      combo++;
 
-        score += (int)judge * combo;
-      } else
-        combo = 0;
+      score += (int)judge * combo;
+    } else
+      combo = 0;
 
-      prevJudge = judge;
-      judgeUpdated = timePlayed;
-      judgements[prevJudge]++;
-    }
+    hits[hitCount].judgement = judge;
+    hits[hitCount].hitDiff = hitDiff;
+    hitCount++;
+
+    prevJudge = judge;
+    judgeUpdated = timePlayed;
+    judgements[prevJudge]++;
 
     return judge;
   };
 
-  // TODO: Make result screen
+  // TODO: Make result screen, pause screen
   while (!WindowShouldClose()) {
-    if (playing && !IsMusicStreamPlaying(music) && IsMusicReady(music)) {
-      SetMusicVolume(music, 0.15f);
-      PlayMusicStream(music);
-    } else if (playing) {
-      UpdateMusicStream(music);
+    if (message) {
+      BeginDrawing();
+      DrawText(message, WINDOW_WIDTH / 2 - MeasureText(message, 50) / 2,
+               WINDOW_HEIGHT / 2 - 25, 50, RED);
+      EndDrawing();
+      continue;
+    }
 
-      timePlayed = GetMusicTimePlayed(music);
+    if (playing) {
+      if (wait > 0) {
+        float frameTime = GetFrameTime();
+        wait -= frameTime;
+        timePlayed += frameTime;
+
+        if (wait <= 0) {
+          if (stop) {
+            playing = false;
+            stop = false;
+            StopMusicStream(music);
+          }
+
+          wait = 0;
+        }
+      } else {
+        if (!IsMusicStreamPlaying(music) && !stop) {
+          SetMusicVolume(music, 0.15f);
+          PlayMusicStream(music);
+        }
+
+        UpdateMusicStream(music);
+        timePlayed = GetMusicTimePlayed(music);
+      }
+
+      if (hitCount >= hits.size() && !stop) {
+        wait = 1.5f;
+        stop = true;
+      }
+
       int i;
       bool pressedLane[4] = {false};
 
@@ -151,11 +193,6 @@ int main(void) {
             pressedLane[note.lane - 1] = true;
           }
         }
-      }
-
-      if (timePlayed >= GetMusicTimeLength(music) - beatTime) {
-        StopMusicStream(music);
-        playing = false;
       }
 
       BeginDrawing();
@@ -222,7 +259,7 @@ int main(void) {
                     180, Color{180, 180, 180, 255});
 
       // Previous Judgement
-      if (timePlayed - judgeUpdated <= 0.6f) {
+      if (timePlayed >= 0 && timePlayed - judgeUpdated <= 0.6f) {
         int fontSize = 80 + (0.2f - (timePlayed - judgeUpdated)) * 100;
         if (fontSize <= 80)
           fontSize = 80;
@@ -247,7 +284,7 @@ int main(void) {
       }
 
       // Early/Late (Only shows in GOOD, BAD)
-      if (timePlayed - diffUpdated <= 0.6f) {
+      if (timePlayed >= 0 && timePlayed - diffUpdated <= 0.6f) {
         int fontSize = 60 + (0.2f - (timePlayed - diffUpdated)) * 100,
             prevHitDiff = hits[prevGoodBadHit].hitDiff;
         if (fontSize <= 60)
@@ -304,12 +341,11 @@ int main(void) {
                           Color{50, 50, 50, 255});
 
             if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-              playing = true;
               currentMap = &map;
               music = LoadMusicStream(map.musicPath.c_str());
-              beatTime = 60.0f / map.bpm;
               notes = map.notes;
               hits.resize(notes.size() + map.longNoteCount);
+              playing = true;
             }
           }
 

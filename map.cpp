@@ -19,16 +19,23 @@ Beatmap::Beatmap(path filePath) {
 
     while (getline(file, line)) {
       if (isNotes) {
-        if (startsWith(line, "-")) {
+        if (startsWith(line, "- StartTime: ")) {
           notes.push_back(Note());
           c++;
           notes[c].startTime = stoi(line.substr(13));
           notes[c].endTime = -1;
+        } else if (startsWith(line, "- Lane: ")) {
+          notes.push_back(Note());
+          c++;
+          notes[c].startTime = 1;
+          notes[c].endTime = -1;
+          notes[c].lane = stoi(line.substr(8));
         } else if (startsWith(line, "  EndTime: ")) {
           notes[c].endTime = stoi(line.substr(11));
           longNoteCount++;
         } else if (startsWith(line, "  Lane: "))
           notes[c].lane = stoi(line.substr(8));
+
       } else {
         if (startsWith(line, "Mode: ") && line.substr(6) != "Keys4")
           throw "Ray4k only supports 4k maps.";
@@ -61,9 +68,8 @@ vector<Mapset> loadMaps(path songsPath) {
       Mapset mapset;
 
       for (const auto &e : directory_iterator(entry)) {
-        if (e.is_regular_file() && e.path().extension() == ".qua") {
+        if (e.is_regular_file() && e.path().extension() == ".qua")
           mapset.maps.push_back(Beatmap(e.path()));
-        }
       }
 
       mapsets.push_back(mapset);
