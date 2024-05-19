@@ -1,4 +1,4 @@
-#include "judge.h"
+#include "judge.hpp"
 
 Judgement calcScore(int hitDiff) {
   if (hitDiff <= (int)JudgementHitWindow::GREAT)

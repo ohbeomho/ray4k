@@ -1,5 +1,5 @@
-#include "judge.h"
-#include "map.h"
+#include "judge.hpp"
+#include "map.hpp"
 #include <cmath>
 #include <cstdlib>
 #include <map>
