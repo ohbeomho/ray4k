@@ -2,7 +2,7 @@
 #define RAY4K_JUDGE_H_
 
 enum class Judgement { GREAT = 100, GOOD = 75, BAD = 35, MISS = 0, GHOST = -1 };
-enum class JudgementHitWindow { GREAT = 70, GOOD = 120, BAD = 190, MISS = 230 };
+enum class JudgementHitWindow { GREAT = 60, GOOD = 100, BAD = 150, MISS = 220 };
 
 Judgement calcScore(int hitDiff);
 
