@@ -1,5 +1,6 @@
 #include "map.h"
 #include <fstream>
+#include <iostream>
 #include <vector>
 
 using namespace std;
@@ -23,6 +24,7 @@ Beatmap::Beatmap(path filePath) {
           notes.push_back(Note());
           c++;
           notes[c].startTime = stoi(line.substr(13));
+          notes[c].endTime = -1;
         } else if (startsWith(line, "  EndTime: "))
           notes[c].endTime = stoi(line.substr(11));
         else if (startsWith(line, "  Lane: "))

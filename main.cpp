@@ -22,12 +22,14 @@ int main(void) {
   vector<Mapset> mapsets = loadMaps(path("./songs"));
 
   bool playing = false;
-  float timePlayed = 0.0f, judgeUpdated = 0.0f, beatTime;
+  float timePlayed = 0.0f, judgeUpdated = 0.0f, diffUpdated = 0.0f, beatTime;
   Beatmap *currentMap = NULL;
   vector<Note> notes, longNotes;
   Music music;
 
-  int keys[4] = {KEY_D, KEY_F, KEY_J, KEY_K}, prevTimeDiff = 0;
+  int keys[4] = {KEY_D, KEY_F, KEY_J, KEY_K};
+  // Only GOOD, BAD
+  int prevHitDiff = 0;
 
   map<Judgement, int> judgements;
   map<Judgement, pair<string, Color>> judgementInfo;
@@ -39,21 +41,25 @@ int main(void) {
   Judgement prevJudge = Judgement::GHOST;
   int score = 0;
 
-  // TODO: Fix ghost judge right after normal judge
-  auto judge = [&prevJudge, &prevTimeDiff, &judgements, &judgeUpdated, &score,
-                &timePlayed, &judgementInfo](int hitDiff) {
+  auto judge = [&prevJudge, &prevHitDiff, &judgements, &judgeUpdated, &score,
+                &timePlayed, &judgementInfo, &diffUpdated](int hitDiff) {
     int absHitDiff = abs(hitDiff);
-    prevJudge = calcScore(absHitDiff);
+    Judgement judge = calcScore(absHitDiff);
 
-    if (prevJudge != Judgement::GHOST) {
+    if (judge != Judgement::GHOST) {
       score += (int)prevJudge;
       judgements[prevJudge]++;
+
+      prevJudge = judge;
+      judgeUpdated = timePlayed;
+
+      if (prevJudge != Judgement::GREAT && prevJudge != Judgement::MISS) {
+        prevHitDiff = hitDiff;
+        diffUpdated = timePlayed;
+      }
     }
 
-    prevTimeDiff = hitDiff;
-    judgeUpdated = timePlayed;
-
-    return prevJudge;
+    return judge;
   };
 
   // TODO: Make result screen
@@ -68,32 +74,32 @@ int main(void) {
       int i;
       bool pressedLane[4] = {false};
 
-      if (timePlayed - judgeUpdated > 0.4f)
-        prevJudge = Judgement::GHOST;
-
       for (i = 0; i < notes.size(); i++) {
         Note &note = notes[i];
         if ((timePlayed * 1000 + ((float)WINDOW_HEIGHT / SCROLL_SPEED)) * 1000 <
             note.startTime)
           break;
-        else if (timePlayed > note.startTime || note.judged)
+        else if (timePlayed > note.startTime || note.judged ||
+                 pressedLane[note.lane - 1])
           continue;
 
         note.y =
             -((note.startTime - timePlayed * 1000) / 1000.0 * SCROLL_SPEED) +
             WINDOW_HEIGHT - 300;
 
-        int startTimeDiff = note.startTime - (int)(timePlayed * 1000);
-        if (startTimeDiff < -(int)JudgementHitWindow::BAD &&
-            startTimeDiff > -(int)JudgementHitWindow::MISS && !note.pressed) {
+        int startTimeDiff = (int)(timePlayed * 1000) - note.startTime;
+        if (startTimeDiff > (int)JudgementHitWindow::BAD &&
+            startTimeDiff < (int)JudgementHitWindow::MISS && !note.pressed) {
           judge(startTimeDiff);
           note.judged = true;
+          continue;
         }
 
         // Note judge
-        if (IsKeyPressed(keys[note.lane - 1]) && !pressedLane[note.lane - 1]) {
+        if (IsKeyPressed(keys[note.lane - 1])) {
+          pressedLane[note.lane - 1] = true;
+
           if (judge(startTimeDiff) != Judgement::GHOST) {
-            pressedLane[note.lane - 1] = true;
             if (note.endTime == -1)
               note.judged = true;
             else
@@ -103,9 +109,9 @@ int main(void) {
 
         // Long note release judge
         if (note.endTime != -1 && note.pressed) {
-          int endTimeDiff = note.endTime - (int)(timePlayed * 1000);
-          if (endTimeDiff < -(int)JudgementHitWindow::BAD &&
-              endTimeDiff > -(int)JudgementHitWindow::MISS &&
+          int endTimeDiff = (int)(timePlayed * 1000) - note.endTime;
+          if (endTimeDiff > (int)JudgementHitWindow::BAD &&
+              endTimeDiff < (int)JudgementHitWindow::MISS &&
               IsKeyDown(keys[note.lane - 1])) {
             judge(endTimeDiff);
             note.judged = true;
@@ -113,7 +119,9 @@ int main(void) {
 
           if (IsKeyReleased(keys[note.lane - 1])) {
             note.judged = true;
-            if (endTimeDiff > (int)JudgementHitWindow::MISS) {
+
+            // Released too early
+            if (endTimeDiff < -(int)JudgementHitWindow::MISS) {
               judge((int)JudgementHitWindow::MISS - 1);
               continue;
             }
@@ -193,7 +201,7 @@ int main(void) {
                     180, LIGHTGRAY);
 
       // Previous Judgement
-      if (prevJudge != Judgement::GHOST) {
+      if (timePlayed - judgeUpdated <= 0.6f) {
         int fontSize = 80 + (0.2f - (timePlayed - judgeUpdated)) * 100;
         if (fontSize <= 80)
           fontSize = 80;
@@ -203,6 +211,19 @@ int main(void) {
                 MeasureText(judgementInfo[prevJudge].first.c_str(), fontSize) /
                     2,
             WINDOW_HEIGHT / 2, fontSize, judgementInfo[prevJudge].second);
+      }
+
+      // Early/Late
+      if (timePlayed - diffUpdated <= 0.6f) {
+        int fontSize = 60 + (0.2f - (timePlayed - diffUpdated)) * 100;
+        if (fontSize <= 60)
+          fontSize = 60;
+        string text = (prevHitDiff > 0 ? "LATE " : "EARLY ") +
+                      to_string(abs(prevHitDiff)) + "ms";
+        DrawText(text.c_str(),
+                 WINDOW_WIDTH / 2 - MeasureText(text.c_str(), fontSize) / 2,
+                 WINDOW_HEIGHT / 2 - fontSize - 10, fontSize,
+                 prevHitDiff > 0 ? Color{150, 20, 20, 255} : LIME);
       }
 
       EndDrawing();
