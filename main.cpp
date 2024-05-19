@@ -1,6 +1,8 @@
+#include "judge.h"
 #include "map.h"
 #include <cmath>
 #include <cstdlib>
+#include <map>
 #include <raylib.h>
 #include <string>
 
@@ -10,18 +12,6 @@
 
 // px/s
 #define SCROLL_SPEED 2800
-
-// Hit window
-// ms
-#define GREAT 70
-#define GOOD 120
-#define BAD 190
-#define MISS 230
-
-// Judgement score
-#define GREAT_SCORE 100
-#define GOOD_SCORE 75
-#define BAD_SCORE 35
 
 int main(void) {
   InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Ray4K");
@@ -36,34 +26,37 @@ int main(void) {
   Beatmap *currentMap = NULL;
   vector<Note> notes, longNotes;
   Music music;
-  // TODO: Make Judgement class
-  int keys[4] = {KEY_D, KEY_F, KEY_J, KEY_K}, judgements[4] = {0},
-      prevJudge = -1, prevTimeDiff = 0;
-  string judgeTexts[4] = {"GREAT", "GOOD", "BAD", "MISS"};
-  Color judgeColors[4] = {SKYBLUE, GREEN, DARKGRAY, RED};
+
+  int keys[4] = {KEY_D, KEY_F, KEY_J, KEY_K}, prevTimeDiff = 0;
+
+  map<Judgement, int> judgements;
+  map<Judgement, pair<string, Color>> judgementInfo;
+  judgementInfo[Judgement::GREAT] = make_pair("GREAT", SKYBLUE);
+  judgementInfo[Judgement::GOOD] = make_pair("GOOD", GREEN);
+  judgementInfo[Judgement::BAD] = make_pair("BAD", DARKGRAY);
+  judgementInfo[Judgement::MISS] = make_pair("MISS", RED);
+
+  Judgement prevJudge = Judgement::GHOST;
   int score = 0;
 
-  auto judge = [&prevJudge, &prevTimeDiff, &judgements, &judgeUpdated,
-                &score](int timeDiff, float time) {
-    int absTimeDiff = abs(timeDiff);
-    if (absTimeDiff <= GREAT) {
-      prevJudge = 0;
-      score += GREAT_SCORE;
-    } else if (absTimeDiff <= GOOD) {
-      prevJudge = 1;
-      score += GOOD_SCORE;
-    } else if (absTimeDiff <= BAD) {
-      prevJudge = 2;
-      score += BAD_SCORE;
-    } else if (absTimeDiff < MISS)
-      prevJudge = 3;
-    prevTimeDiff = timeDiff;
-    judgeUpdated = time;
-    judgements[prevJudge]++;
+  // TODO: Fix ghost judge right after normal judge
+  auto judge = [&prevJudge, &prevTimeDiff, &judgements, &judgeUpdated, &score,
+                &timePlayed, &judgementInfo](int hitDiff) {
+    int absHitDiff = abs(hitDiff);
+    prevJudge = calcScore(absHitDiff);
+
+    if (prevJudge != Judgement::GHOST) {
+      score += (int)prevJudge;
+      judgements[prevJudge]++;
+    }
+
+    prevTimeDiff = hitDiff;
+    judgeUpdated = timePlayed;
+
+    return prevJudge;
   };
 
   // TODO: Make result screen
-  // TODO: Fix timing issue (노트가 일찍 내려옴)
   while (!WindowShouldClose()) {
     if (playing && !IsMusicStreamPlaying(music) && IsMusicReady(music)) {
       SetMusicVolume(music, 0.15f);
@@ -75,8 +68,8 @@ int main(void) {
       int i;
       bool pressedLane[4] = {false};
 
-      if (timePlayed - judgeUpdated > 0.5f)
-        prevJudge = -1;
+      if (timePlayed - judgeUpdated > 0.4f)
+        prevJudge = Judgement::GHOST;
 
       for (i = 0; i < notes.size(); i++) {
         Note &note = notes[i];
@@ -91,45 +84,42 @@ int main(void) {
             WINDOW_HEIGHT - 300;
 
         int startTimeDiff = note.startTime - (int)(timePlayed * 1000);
-        if (startTimeDiff < -BAD && startTimeDiff >= -MISS && !note.pressed) {
-          judge(startTimeDiff, timePlayed);
+        if (startTimeDiff < -(int)JudgementHitWindow::BAD &&
+            startTimeDiff > -(int)JudgementHitWindow::MISS && !note.pressed) {
+          judge(startTimeDiff);
           note.judged = true;
         }
 
         // Note judge
         if (IsKeyPressed(keys[note.lane - 1]) && !pressedLane[note.lane - 1]) {
-          if (startTimeDiff > MISS)
-            continue;
-
-          pressedLane[note.lane - 1] = true;
-          if (note.endTime == -1)
-            note.judged = true;
-          else
-            note.pressed = true;
-
-          judge(startTimeDiff, timePlayed);
+          if (judge(startTimeDiff) != Judgement::GHOST) {
+            pressedLane[note.lane - 1] = true;
+            if (note.endTime == -1)
+              note.judged = true;
+            else
+              note.pressed = true;
+          }
         }
 
         // Long note release judge
         if (note.endTime != -1 && note.pressed) {
           int endTimeDiff = note.endTime - (int)(timePlayed * 1000);
-          if (endTimeDiff < -BAD && endTimeDiff >= -MISS &&
+          if (endTimeDiff < -(int)JudgementHitWindow::BAD &&
+              endTimeDiff > -(int)JudgementHitWindow::MISS &&
               IsKeyDown(keys[note.lane - 1])) {
-            judge(endTimeDiff, timePlayed);
+            judge(endTimeDiff);
             note.judged = true;
           }
 
           if (IsKeyReleased(keys[note.lane - 1])) {
-            if (endTimeDiff > MISS) {
-              judge(endTimeDiff, timePlayed);
-              note.judged = true;
+            note.judged = true;
+            if (endTimeDiff > (int)JudgementHitWindow::MISS) {
+              judge((int)JudgementHitWindow::MISS - 1);
               continue;
             }
 
+            judge(endTimeDiff);
             pressedLane[note.lane - 1] = true;
-            note.judged = true;
-
-            judge(endTimeDiff, timePlayed);
           }
         }
       }
@@ -153,18 +143,22 @@ int main(void) {
       DrawText(to_string(score).c_str(), 10, 10, 55, WHITE);
 
       // Judgements
+      int judges[4] = {(int)Judgement::GREAT, (int)Judgement::GOOD,
+                       (int)Judgement::BAD, (int)Judgement::MISS};
       for (i = 0; i < 4; i++)
-        DrawText((judgeTexts[i] + " " + to_string(judgements[i])).c_str(), 10,
-                 10 + 60 * (i + 1), 55, judgeColors[i]);
+        DrawText((judgementInfo[(Judgement)judges[i]].first + " " +
+                  to_string(judgements[(Judgement)judges[i]]))
+                     .c_str(),
+                 10, 10 + 60 * (i + 1), 55,
+                 judgementInfo[(Judgement)judges[i]].second);
 
-      // Notes
+      // Long Notes
       for (i = 0; i < notes.size(); i++) {
         Note note = notes[i];
 
         if (note.y == -1000)
           break;
 
-        // Long Notes
         if (!note.judged && note.endTime != -1) {
           DrawRectangle(WINDOW_WIDTH / 2 - WINDOW_WIDTH / 4 +
                             (note.lane - 1) * WINDOW_WIDTH / 8,
@@ -181,6 +175,7 @@ int main(void) {
                       WINDOW_HEIGHT - 300, WINDOW_WIDTH / 8, 120,
                       IsKeyDown(keys[i]) ? YELLOW : GRAY);
 
+      // Notes
       for (i = 0; i < notes.size(); i++) {
         Note note = notes[i];
 
@@ -198,11 +193,16 @@ int main(void) {
                     180, LIGHTGRAY);
 
       // Previous Judgement
-      if (prevJudge != -1) {
-        DrawText(judgeTexts[prevJudge].c_str(),
-                 WINDOW_WIDTH / 2 -
-                     MeasureText(judgeTexts[prevJudge].c_str(), 80) / 2,
-                 WINDOW_HEIGHT / 2, 80, judgeColors[prevJudge]);
+      if (prevJudge != Judgement::GHOST) {
+        int fontSize = 80 + (0.2f - (timePlayed - judgeUpdated)) * 100;
+        if (fontSize <= 80)
+          fontSize = 80;
+        DrawText(
+            judgementInfo[prevJudge].first.c_str(),
+            WINDOW_WIDTH / 2 -
+                MeasureText(judgementInfo[prevJudge].first.c_str(), fontSize) /
+                    2,
+            WINDOW_HEIGHT / 2, fontSize, judgementInfo[prevJudge].second);
       }
 
       EndDrawing();
