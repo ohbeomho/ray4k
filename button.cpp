@@ -17,11 +17,11 @@ bool Button::isButtonArea(int mouseX, int mouseY) {
   // padding 5
   return mouseX >= x - 5 && mouseY >= y - 5 &&
          mouseX <= x + MeasureText(text.c_str(), fontSize) + 5 &&
-         mouseY <= y + fontSize + 5 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+         mouseY <= y + fontSize + 5;
 }
 
 void Button::checkClick(int mouseX, int mouseY) {
-  if (isButtonArea(mouseX, mouseY))
+  if (isButtonArea(mouseX, mouseY) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
     onClick();
 }
 
@@ -29,7 +29,7 @@ void Button::draw(int mouseX, int mouseY) {
   DrawText(text.c_str(), x, y, fontSize, color);
 
   if (isButtonArea(mouseX, mouseY)) {
-    DrawRectangle(x - 5, y - 5, MeasureText(text.c_str(), 80) + 10, 90,
-                  Color{255, 255, 255, 50});
+    DrawRectangle(x - 5, y - 5, MeasureText(text.c_str(), fontSize) + 10,
+                  fontSize + 10, Color{255, 255, 255, 50});
   }
 }
