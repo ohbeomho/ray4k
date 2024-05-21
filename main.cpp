@@ -1,3 +1,4 @@
+#include "button.hpp"
 #include "judge.hpp"
 #include "map.hpp"
 #include <algorithm>
@@ -14,6 +15,8 @@
 #define WINDOW_HEIGHT 1500
 
 #define SCROLL_SPEED 3000
+
+#define MOUSE_SCROLL_SPEED 50
 
 class Hit {
 public:
@@ -42,7 +45,7 @@ int main(void) {
 
   bool stop = false, pause = false;
   float timePlayed = -1.5f, judgeUpdated = -1.0f, diffUpdated = -1.0f;
-  Beatmap *currentMap = NULL;
+  Beatmap *currentBeatmap = NULL;
   int currentScreen = 0;
   vector<Note> notes, longNotes;
   Music music;
@@ -96,11 +99,11 @@ int main(void) {
     return judge;
   };
 
-  auto startMap = [&](Beatmap *map) {
-    currentMap = map;
-    music = LoadMusicStream(map->musicPath.c_str());
-    notes = map->notes;
-    hits.resize(notes.size() + map->longNoteCount);
+  auto startMap = [&](Beatmap *beatmap) {
+    currentBeatmap = beatmap;
+    music = LoadMusicStream(beatmap->musicPath.c_str());
+    notes = beatmap->notes;
+    hits.resize(notes.size() + beatmap->longNoteCount);
     scoreMultiplier = 10000.0 / hits.size();
     fill(hits.begin(), hits.end(), Hit());
     timePlayed = -1.5f;
@@ -119,32 +122,77 @@ int main(void) {
     currentScreen = 1;
   };
 
-  array<function<void()>, 2> screens = {
+  array<vector<Button>, 2> screenButtons;
+
+  // Maps
+  int y = 10, i, j;
+  for (Mapset &mapset : mapsets) {
+    for (Beatmap &beatmap : mapset.maps) {
+      screenButtons[0].push_back(Button(
+          beatmap.title.append(" [" + beatmap.diffName + "]"), 10, y, 50,
+          [&startMap, &beatmap]() { startMap(&beatmap); }, WHITE));
+      y += 60;
+    }
+  }
+
+  // Pause screen buttons
+  string buttonTexts[] = {"CONTINUE", "RESTART", "EXIT"};
+  function<void()> buttonFuncs[] = {[&wait]() { wait = 0.3f; },
+                                    [&]() {
+                                      SeekMusicStream(music, 0);
+
+                                      int i;
+                                      for (i = 0; i < notes.size(); i++) {
+                                        notes[i].judged = false;
+                                        notes[i].pressed = false;
+                                        notes[i].y = -1000;
+                                      }
+
+                                      fill(hits.begin(), hits.end(), Hit());
+                                      timePlayed = -1.5f;
+                                      judgeUpdated = -1.0f;
+                                      diffUpdated = -1.0f;
+                                      wait = 1.5f;
+                                      score = 0l;
+                                      hitCount = 0;
+                                      combo = 0;
+                                      judgements[Judgement::GREAT] = 0;
+                                      judgements[Judgement::GOOD] = 0;
+                                      judgements[Judgement::BAD] = 0;
+                                      judgements[Judgement::MISS] = 0;
+                                      stop = false;
+                                      pause = false;
+                                    },
+                                    [&music, &currentScreen]() {
+                                      StopMusicStream(music);
+                                      currentScreen = 0;
+                                    }};
+
+  for (i = 0; i < 3; i++) {
+    screenButtons[1].push_back(
+        Button(buttonTexts[i],
+               WINDOW_WIDTH / 2 - MeasureText(buttonTexts[i].c_str(), 80) / 2,
+               WINDOW_HEIGHT / 4 - 40 + (WINDOW_HEIGHT / 4) * i, 80,
+               buttonFuncs[i], i == 2 ? RED : WHITE));
+  }
+
+  function<void()> screens[] = {
       // Main screen (Song select)
       [&]() {
-        int mouseX = GetMouseX(), mouseY = GetMouseY();
-
         BeginDrawing();
 
         ClearBackground(BLACK);
 
-        // Show maps
-        int y = 10;
-        for (Mapset mapset : mapsets) {
-          for (Beatmap map : mapset.maps) {
-            string text = map.title.append(" [" + map.diffName + "]");
-            if (mouseX >= 10 && mouseY >= y && mouseX <= WINDOW_WIDTH - 10 &&
-                mouseY <= y + 50) {
-              DrawRectangle(5, y - 5, WINDOW_WIDTH - 15, 55,
-                            Color{50, 50, 50, 255});
+        int mouseX = GetMouseX(), mouseY = GetMouseY();
+        float mouseWheelMove = GetMouseWheelMove();
+        for (Button &button : screenButtons[0]) {
+          button.y += mouseWheelMove * MOUSE_SCROLL_SPEED;
 
-              if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-                startMap(&map);
-            }
+          if (button.y + 80 < 0 || button.y > WINDOW_HEIGHT)
+            continue;
 
-            DrawText(text.c_str(), 10, y, 50, WHITE);
-            y += 60;
-          }
+          button.draw(mouseX, mouseY);
+          button.checkClick(mouseX, mouseY);
         }
 
         EndDrawing();
@@ -268,7 +316,7 @@ int main(void) {
                  LIGHTGRAY);
 
         // Score
-        DrawText(to_string((int)round(score)).c_str(), 10, 10, 55, WHITE);
+        DrawText(to_string((int)round(score)).c_str(), 10, 10, 75, WHITE);
 
         // Judgements
         int judges[4] = {(int)Judgement::GREAT, (int)Judgement::GOOD,
@@ -277,7 +325,7 @@ int main(void) {
           DrawText((judgementInfo[(Judgement)judges[i]].first + " " +
                     to_string(judgements[(Judgement)judges[i]]))
                        .c_str(),
-                   10, 10 + 60 * (i + 1), 55,
+                   10, 10 + 100 * (i + 1), 55,
                    judgementInfo[(Judgement)judges[i]].second);
 
         // Long Notes
@@ -390,40 +438,14 @@ int main(void) {
         if (pause && wait <= 0) {
           DrawRectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, Color{0, 0, 0, 130});
 
-          // TODO: Draw quit, restart, continue button
+          int mouseX = GetMouseX(), mouseY = GetMouseY();
+          for (Button &button : screenButtons[1]) {
+            button.draw(mouseX, mouseY);
+            button.checkClick(mouseX, mouseY);
+          }
         }
 
         EndDrawing();
-
-        if (pause) {
-          if (IsKeyPressed(KEY_Q)) {
-            StopMusicStream(music);
-            currentScreen = 0;
-          } else if (IsKeyPressed(KEY_R)) {
-            SeekMusicStream(music, 0);
-
-            for (i = 0; i < notes.size(); i++) {
-              notes[i].judged = false;
-              notes[i].pressed = false;
-              notes[i].y = -1000;
-            }
-
-            fill(hits.begin(), hits.end(), Hit());
-            timePlayed = -1.5f;
-            judgeUpdated = -1.0f;
-            diffUpdated = -1.0f;
-            wait = 1.5f;
-            score = 0l;
-            hitCount = 0;
-            combo = 0;
-            judgements[Judgement::GREAT] = 0;
-            judgements[Judgement::GOOD] = 0;
-            judgements[Judgement::BAD] = 0;
-            judgements[Judgement::MISS] = 0;
-            stop = false;
-            pause = false;
-          }
-        }
       }};
 
   while (!WindowShouldClose()) {
@@ -438,7 +460,7 @@ int main(void) {
     screens[currentScreen]();
   }
 
-  if (currentMap != NULL)
+  if (currentBeatmap != NULL)
     UnloadMusicStream(music);
 
   CloseWindow();
