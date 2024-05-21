@@ -59,8 +59,8 @@ int main(void) {
   judgementInfo[Judgement::MISS] = make_pair("MISS", RED);
 
   Judgement prevJudge;
-  long score;
   int combo;
+  double score, scoreMultiplier;
   float wait;
 
   // ms
@@ -81,7 +81,7 @@ int main(void) {
 
       combo++;
 
-      score += (int)judge * combo;
+      score += (double)judge * scoreMultiplier;
     } else
       combo = 0;
 
@@ -101,6 +101,7 @@ int main(void) {
     music = LoadMusicStream(map->musicPath.c_str());
     notes = map->notes;
     hits.resize(notes.size() + map->longNoteCount);
+    scoreMultiplier = 10000.0 / hits.size();
     fill(hits.begin(), hits.end(), Hit());
     timePlayed = -1.5f;
     judgeUpdated = -1.0f;
@@ -153,7 +154,8 @@ int main(void) {
         if (wait > 0) {
           float frameTime = GetFrameTime();
           wait -= frameTime;
-          timePlayed += frameTime;
+          if (!pause)
+            timePlayed += frameTime;
 
           if (wait <= 0) {
             if (stop) {
@@ -248,9 +250,9 @@ int main(void) {
         }
 
         if (IsKeyPressed(KEY_ESCAPE)) {
-          // Resume after 0.5s delay
+          // Resume after 0.3s delay
           if (pause)
-            wait = 0.5f;
+            wait = 0.3f;
           else
             pause = true;
         }
@@ -266,7 +268,7 @@ int main(void) {
                  LIGHTGRAY);
 
         // Score
-        DrawText(to_string(score).c_str(), 10, 10, 55, WHITE);
+        DrawText(to_string((int)round(score)).c_str(), 10, 10, 55, WHITE);
 
         // Judgements
         int judges[4] = {(int)Judgement::GREAT, (int)Judgement::GOOD,
@@ -386,7 +388,9 @@ int main(void) {
 
         // Pause screen
         if (pause && wait <= 0) {
-          DrawRectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, Color{0, 0, 0, 90});
+          DrawRectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, Color{0, 0, 0, 130});
+
+          // TODO: Draw quit, restart, continue button
         }
 
         EndDrawing();
@@ -396,9 +400,28 @@ int main(void) {
             StopMusicStream(music);
             currentScreen = 0;
           } else if (IsKeyPressed(KEY_R)) {
-            // TODO: Fix restart crashing
-            StopMusicStream(music);
-            startMap(currentMap);
+            SeekMusicStream(music, 0);
+
+            for (i = 0; i < notes.size(); i++) {
+              notes[i].judged = false;
+              notes[i].pressed = false;
+              notes[i].y = -1000;
+            }
+
+            fill(hits.begin(), hits.end(), Hit());
+            timePlayed = -1.5f;
+            judgeUpdated = -1.0f;
+            diffUpdated = -1.0f;
+            wait = 1.5f;
+            score = 0l;
+            hitCount = 0;
+            combo = 0;
+            judgements[Judgement::GREAT] = 0;
+            judgements[Judgement::GOOD] = 0;
+            judgements[Judgement::BAD] = 0;
+            judgements[Judgement::MISS] = 0;
+            stop = false;
+            pause = false;
           }
         }
       }};
