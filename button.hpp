@@ -14,9 +14,9 @@ public:
   function<void()> onClick;
   Color color;
 
-  void checkClick(int mouseX, int mouseY);
+  void checkClick();
 
-  void draw(int mouseX, int mouseY);
+  void draw();
 
   bool isButtonArea(int mouseX, int mouseY);
 

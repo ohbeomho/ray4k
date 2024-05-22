@@ -20,12 +20,16 @@ bool Button::isButtonArea(int mouseX, int mouseY) {
          mouseY <= y + fontSize + 5;
 }
 
-void Button::checkClick(int mouseX, int mouseY) {
+void Button::checkClick() {
+  int mouseX = GetMouseX(), mouseY = GetMouseY();
+
   if (isButtonArea(mouseX, mouseY) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
     onClick();
 }
 
-void Button::draw(int mouseX, int mouseY) {
+void Button::draw() {
+  int mouseX = GetMouseX(), mouseY = GetMouseY();
+
   DrawText(text.c_str(), x, y, fontSize, color);
 
   if (isButtonArea(mouseX, mouseY)) {
