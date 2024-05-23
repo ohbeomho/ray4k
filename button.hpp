@@ -8,9 +8,12 @@
 using namespace std;
 
 class Button {
+private:
+  vector<string> lines;
+  int maxLen;
+
 public:
   int x, y, fontSize;
-  string text;
   function<void()> onClick;
   Color color;
 

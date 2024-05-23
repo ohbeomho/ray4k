@@ -17,7 +17,7 @@ Beatmap::Beatmap(path filePath) {
     string line;
     int c = -1;
 
-    while (getline(file, line)) {
+    while (getline(file, line, '\n')) {
       if (isNotes) {
         if (startsWith(line, "- StartTime: ")) {
           notes.push_back(Note());

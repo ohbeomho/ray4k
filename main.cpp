@@ -17,7 +17,7 @@
 // Gameplay scroll speed
 #define SCROLL_SPEED 3000
 // Song select screen
-#define MOUSE_SCROLL_SPEED 50
+#define MOUSE_SCROLL_SPEED 80
 
 // Screen index
 #define SONG_SELECT_SCREEN 0
@@ -73,7 +73,7 @@ int main(void) {
   float wait;
 
   // ms
-  int offset = 60;
+  int offset = 50;
 
   auto judge = [&](int hitDiff) {
     int absHitDiff = abs(hitDiff);
@@ -131,7 +131,7 @@ int main(void) {
   int i;
 
   Screen screens[] = {
-      // Main screen (Song select)
+      // Song select screen
       Screen(
           [&screens, &pause]() {
             for (Button &button : screens[SONG_SELECT_SCREEN].buttons)
@@ -140,7 +140,11 @@ int main(void) {
           [&]() {
             float mouseWheelMove = GetMouseWheelMove();
             for (Button &button : screens[SONG_SELECT_SCREEN].buttons) {
+              float a = (float)(abs((float)WINDOW_HEIGHT / 2 - button.y) /
+                                WINDOW_HEIGHT);
               button.y += mouseWheelMove * MOUSE_SCROLL_SPEED;
+              button.x = (float)WINDOW_WIDTH / 3 + a * WINDOW_WIDTH / 2;
+              button.color.a = (1 - a * 1.5) * 255;
 
               if (button.y + 80 < 0 || button.y > WINDOW_HEIGHT)
                 continue;
@@ -280,7 +284,7 @@ int main(void) {
             // Pause screen
             if (pause && wait <= 0) {
               DrawRectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT,
-                            Color{0, 0, 0, 130});
+                            Color{0, 0, 0, 200});
 
               for (Button &button : screens[GAMEPLAY_SCREEN].buttons)
                 button.draw();
@@ -402,9 +406,10 @@ int main(void) {
   for (Mapset &mapset : mapsets) {
     for (Beatmap &beatmap : mapset.maps) {
       screens[SONG_SELECT_SCREEN].buttons.push_back(Button(
-          beatmap.title.append(" [" + beatmap.diffName + "]"), 10, y, 50,
-          [&startMap, &beatmap]() { startMap(&beatmap); }, WHITE));
-      y += 60;
+          beatmap.title + "\n" + string(100, ' ') + "\n[" + beatmap.diffName +
+              "]",
+          0, y, 50, [&startMap, &beatmap]() { startMap(&beatmap); }, WHITE));
+      y += 220;
     }
   }
 
