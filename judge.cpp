@@ -11,3 +11,17 @@ Judgement calcScore(int hitDiff) {
     return Judgement::MISS;
   return Judgement::GHOST;
 }
+
+Grade calcGrade(double acc) {
+  if (acc >= (double)Grade::S)
+    return Grade::S;
+  else if (acc >= (double)Grade::A)
+    return Grade::A;
+  else if (acc >= (double)Grade::B)
+    return Grade::B;
+  else if (acc >= (double)Grade::C)
+    return Grade::C;
+  else if (acc >= (double)Grade::D)
+    return Grade::D;
+  return Grade::F;
+}

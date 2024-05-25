@@ -66,10 +66,22 @@ int main(void) {
   judgementInfo[Judgement::GOOD] = make_pair("GOOD", GREEN);
   judgementInfo[Judgement::BAD] = make_pair("BAD", DARKGRAY);
   judgementInfo[Judgement::MISS] = make_pair("MISS", RED);
+  int judges[4] = {(int)Judgement::GREAT, (int)Judgement::GOOD,
+                   (int)Judgement::BAD, (int)Judgement::MISS};
+
+  map<Grade, pair<char, Color>> gradeInfo;
+  gradeInfo[Grade::S] = make_pair('S', YELLOW);
+  gradeInfo[Grade::A] = make_pair('A', GREEN);
+  gradeInfo[Grade::B] = make_pair('B', BLUE);
+  gradeInfo[Grade::C] = make_pair('C', PURPLE);
+  gradeInfo[Grade::D] = make_pair('D', GRAY);
+  gradeInfo[Grade::F] = make_pair('F', RED);
 
   Judgement prevJudge;
-  int combo;
+  Grade grade = Grade::S;
+  int combo, accScore;
   double score, scoreMultiplier;
+  double acc = 100.0;
   float wait;
 
   // ms
@@ -98,6 +110,11 @@ int main(void) {
     hits[hitCount].hitDiff = hitDiff;
     hitCount++;
 
+    int i;
+    accScore += (int)judge;
+    acc = (double)accScore / hitCount;
+    grade = calcGrade(acc);
+
     prevJudge = judge;
     judgeUpdated = timePlayed;
     judgements[prevJudge]++;
@@ -105,19 +122,18 @@ int main(void) {
     return judge;
   };
 
-  auto startMap = [&](Beatmap *beatmap) {
-    currentBeatmap = beatmap;
-    music = LoadMusicStream(beatmap->musicPath.c_str());
-    notes = beatmap->notes;
-    hits.resize(notes.size() + beatmap->longNoteCount);
-    scoreMultiplier = 10000.0 / hits.size();
+  auto initState = [&]() {
     fill(hits.begin(), hits.end(), Hit());
+    scoreMultiplier = 10000.0 / hits.size();
     timePlayed = -1.5f;
     judgeUpdated = -1.0f;
     diffUpdated = -1.0f;
     wait = 1.5f;
     combo = 0;
-    score = 0l;
+    score = 0;
+    acc = 100.0;
+    accScore = 0;
+    grade = Grade::S;
     hitCount = 0;
     judgements[Judgement::GREAT] = 0;
     judgements[Judgement::GOOD] = 0;
@@ -125,7 +141,15 @@ int main(void) {
     judgements[Judgement::MISS] = 0;
     stop = false;
     pause = false;
-    currentScreen = 1;
+  };
+
+  auto startMap = [&](Beatmap *beatmap) {
+    currentBeatmap = beatmap;
+    music = LoadMusicStream(beatmap->musicPath.c_str());
+    notes = beatmap->notes;
+    hits.resize(notes.size() + beatmap->longNoteCount);
+    initState();
+    currentScreen = GAMEPLAY_SCREEN;
   };
 
   int i;
@@ -156,22 +180,36 @@ int main(void) {
       Screen(
           [&]() {
             // FPS
-            string fpsText = to_string(GetFPS());
-            DrawText(fpsText.c_str(),
-                     WINDOW_WIDTH - MeasureText(fpsText.c_str(), 40) - 10, 5,
-                     40, LIGHTGRAY);
+            string fpsStr = to_string(GetFPS());
+            DrawText(fpsStr.c_str(),
+                     WINDOW_WIDTH - MeasureText(fpsStr.c_str(), 40) - 10, 5, 40,
+                     LIGHTGRAY);
+
+            // Accuracy
+            const char *accNumStr = TextFormat("%.2f", acc);
+            char accStr[6];
+            for (i = 0; i < 4; i++)
+              accStr[i] = accNumStr[i];
+            accStr[4] = '%';
+            accStr[5] = '\0';
+            DrawText(accStr, 10, 10, 75, WHITE);
+
+            // Grade
+            char gradeStr[2];
+            gradeStr[0] = gradeInfo[grade].first;
+            gradeStr[1] = '\0';
+            DrawText(gradeStr, 20 + MeasureText("00.00%", 75), 10, 75,
+                     gradeInfo[grade].second);
 
             // Score
-            DrawText(to_string((int)round(score)).c_str(), 10, 10, 75, WHITE);
+            DrawText(to_string((int)round(score)).c_str(), 10, 80, 75, WHITE);
 
             // Judgements
-            int judges[4] = {(int)Judgement::GREAT, (int)Judgement::GOOD,
-                             (int)Judgement::BAD, (int)Judgement::MISS};
             for (i = 0; i < 4; i++)
               DrawText((judgementInfo[(Judgement)judges[i]].first + " " +
                         to_string(judgements[(Judgement)judges[i]]))
                            .c_str(),
-                       10, 10 + 100 * (i + 1), 55,
+                       10, 200 + 100 * i, 55,
                        judgementInfo[(Judgement)judges[i]].second);
 
             // Long Notes
@@ -181,14 +219,13 @@ int main(void) {
               if (note.y == -1000)
                 break;
 
-              if (!note.judged && note.endTime != -1) {
+              if (note.endTime != -1 && !note.judged) {
+                double height =
+                    (note.endTime - note.startTime) / 1000.0 * SCROLL_SPEED;
+
                 DrawRectangle(WINDOW_WIDTH / 2 - WINDOW_WIDTH / 4 +
                                   (note.lane - 1) * WINDOW_WIDTH / 8,
-                              note.y - (note.endTime - note.startTime) /
-                                           1000.0 * SCROLL_SPEED,
-                              WINDOW_WIDTH / 8,
-                              (note.endTime - note.startTime) / 1000.0 *
-                                  SCROLL_SPEED,
+                              note.y - height, WINDOW_WIDTH / 8, height,
                               LIGHTGRAY);
               }
             }
@@ -248,12 +285,12 @@ int main(void) {
               if (fontSize <= 60)
                 fontSize = 60;
 
-              string text = (prevHitDiff > 0 ? "LATE " : "EARLY ") +
-                            to_string(abs(prevHitDiff)) + "ms";
+              string diffStr = (prevHitDiff > 0 ? "LATE " : "EARLY ") +
+                               to_string(abs(prevHitDiff)) + "ms";
 
-              DrawText(text.c_str(),
+              DrawText(diffStr.c_str(),
                        WINDOW_WIDTH / 2 -
-                           MeasureText(text.c_str(), fontSize) / 2,
+                           MeasureText(diffStr.c_str(), fontSize) / 2,
                        WINDOW_HEIGHT / 2 - fontSize - 10, fontSize,
                        prevHitDiff > 0 ? Color{150, 20, 20, 255} : LIME);
             }
@@ -291,15 +328,15 @@ int main(void) {
             }
           },
           [&]() {
+            float frameTime = GetFrameTime();
             if (wait > 0) {
-              float frameTime = GetFrameTime();
               wait -= frameTime;
               if (!pause)
                 timePlayed += frameTime;
 
               if (wait <= 0) {
                 if (stop) {
-                  currentScreen = 0;
+                  currentScreen = RESULT_SCREEN;
                   StopMusicStream(music);
                 }
 
@@ -315,7 +352,7 @@ int main(void) {
               if (!pause)
                 UpdateMusicStream(music);
 
-              timePlayed = GetMusicTimePlayed(music);
+              timePlayed += frameTime;
             }
 
             if (hitCount >= hits.size() && !stop) {
@@ -327,9 +364,9 @@ int main(void) {
             bool pressedLane[4] = {false};
 
             if (IsKeyPressed(KEY_ESCAPE)) {
-              // Resume after 0.3s delay
+              // Resume after 0.4s delay
               if (pause)
-                wait = 0.3f;
+                wait = 0.4f;
               else
                 pause = true;
             }
@@ -342,8 +379,8 @@ int main(void) {
               if ((timePlayed + ((float)WINDOW_HEIGHT / SCROLL_SPEED)) <
                   note.startTime / 1000.0)
                 break;
-              else if (timePlayed > note.startTime || note.judged ||
-                       pressedLane[note.lane - 1])
+              else if (timePlayed > note.startTime ||
+                       pressedLane[note.lane - 1] || note.judged)
                 continue;
 
               // Scroll
@@ -358,6 +395,8 @@ int main(void) {
                   startTimeDiff < (int)JudgementHitWindow::MISS &&
                   !note.pressed) {
                 judge(startTimeDiff);
+                if (note.endTime != -1)
+                  judge(startTimeDiff);
                 note.judged = true;
                 continue;
               }
@@ -399,6 +438,70 @@ int main(void) {
                 }
               }
             }
+          }),
+      // Result screen
+      Screen(
+          [&]() {
+            // Score
+            string scoreStr = to_string((int)round(score));
+            DrawText(scoreStr.c_str(),
+                     WINDOW_WIDTH / 4 - MeasureText(scoreStr.c_str(), 90) / 2,
+                     100, 90, WHITE);
+
+            // Judgements
+            for (i = 0; i < 4; i++) {
+              Judgement j = (Judgement)judges[i];
+              string judgeStr =
+                  judgementInfo[j].first + " " + to_string(judgements[j]);
+              DrawText(judgeStr.c_str(),
+                       WINDOW_HEIGHT / 4 -
+                           MeasureText(judgeStr.c_str(), 70) / 2,
+                       WINDOW_HEIGHT / 2 - (75 * 3) + (75 * i), 70,
+                       judgementInfo[j].second);
+            }
+
+            // Hits
+            DrawRectangle(WINDOW_WIDTH / 4 - WINDOW_WIDTH / 6,
+                          WINDOW_HEIGHT - 400, WINDOW_WIDTH / 3, 300,
+                          Color{255, 255, 255, 30});
+            DrawLine(WINDOW_WIDTH / 4 - WINDOW_WIDTH / 6, WINDOW_HEIGHT - 250,
+                     WINDOW_WIDTH / 4 + WINDOW_WIDTH / 6, WINDOW_HEIGHT - 250,
+                     WHITE);
+            for (i = 0; i < hits.size(); i++) {
+              DrawCircle((double)WINDOW_WIDTH / 4 - (double)WINDOW_WIDTH / 6 +
+                             10 +
+                             (double)((double)(i + 1) / hits.size()) *
+                                 ((double)WINDOW_WIDTH / 3 - 20),
+                         WINDOW_HEIGHT - 250 +
+                             (double)hits[i].hitDiff /
+                                 (int)JudgementHitWindow::MISS * 150,
+                         2.0f, judgementInfo[hits[i].judgement].second);
+            }
+
+            // Accuracy
+            const char *accNumStr = TextFormat("%.2f", acc);
+            char accStr[6];
+            for (i = 0; i < 4; i++)
+              accStr[i] = accNumStr[i];
+            accStr[4] = '%';
+            accStr[5] = '\0';
+            DrawText(accStr,
+                     WINDOW_WIDTH / 2 + WINDOW_WIDTH / 4 -
+                         MeasureText("00.00%", 50) / 2,
+                     WINDOW_HEIGHT / 2 - 200, 80, WHITE);
+
+            // Grade
+            char gradeStr[2];
+            gradeStr[0] = gradeInfo[grade].first;
+            gradeStr[1] = '\0';
+            DrawText(gradeStr,
+                     WINDOW_WIDTH / 2 + WINDOW_WIDTH / 4 -
+                         MeasureText("S", 500) / 2,
+                     WINDOW_HEIGHT / 2 - 100, 500, gradeInfo[grade].second);
+          },
+          [&]() {
+            if (IsKeyPressed(KEY_ESCAPE))
+              currentScreen = SONG_SELECT_SCREEN;
           })};
 
   // Map screen buttons
@@ -426,24 +529,11 @@ int main(void) {
                                         notes[i].y = -1000;
                                       }
 
-                                      fill(hits.begin(), hits.end(), Hit());
-                                      timePlayed = -1.5f;
-                                      judgeUpdated = -1.0f;
-                                      diffUpdated = -1.0f;
-                                      wait = 1.5f;
-                                      score = 0l;
-                                      hitCount = 0;
-                                      combo = 0;
-                                      judgements[Judgement::GREAT] = 0;
-                                      judgements[Judgement::GOOD] = 0;
-                                      judgements[Judgement::BAD] = 0;
-                                      judgements[Judgement::MISS] = 0;
-                                      stop = false;
-                                      pause = false;
+                                      initState();
                                     },
                                     [&music, &currentScreen]() {
                                       StopMusicStream(music);
-                                      currentScreen = 0;
+                                      currentScreen = SONG_SELECT_SCREEN;
                                     }};
 
   for (i = 0; i < 3; i++) {
