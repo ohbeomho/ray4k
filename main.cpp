@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <format>
 #include <functional>
 #include <map>
 #include <raylib.h>
@@ -68,6 +69,9 @@ int main(void) {
   judgementInfo[Judgement::MISS] = make_pair("MISS", RED);
   int judges[4] = {(int)Judgement::GREAT, (int)Judgement::GOOD,
                    (int)Judgement::BAD, (int)Judgement::MISS};
+  int hitWindows[4] = {
+      (int)JudgementHitWindow::GREAT, (int)JudgementHitWindow::GOOD,
+      (int)JudgementHitWindow::BAD, (int)JudgementHitWindow::MISS};
 
   map<Grade, pair<char, Color>> gradeInfo;
   gradeInfo[Grade::S] = make_pair('S', YELLOW);
@@ -186,19 +190,14 @@ int main(void) {
                      LIGHTGRAY);
 
             // Accuracy
-            const char *accNumStr = TextFormat("%.2f", acc);
-            char accStr[6];
-            for (i = 0; i < 4; i++)
-              accStr[i] = accNumStr[i];
-            accStr[4] = '%';
-            accStr[5] = '\0';
-            DrawText(accStr, 10, 10, 75, WHITE);
+            string accStr = format("{:.2f}", acc) + "%";
+            DrawText(accStr.c_str(), 10, 10, 75, WHITE);
 
             // Grade
             char gradeStr[2];
             gradeStr[0] = gradeInfo[grade].first;
             gradeStr[1] = '\0';
-            DrawText(gradeStr, 20 + MeasureText("00.00%", 75), 10, 75,
+            DrawText(gradeStr, 20 + MeasureText(accStr.c_str(), 75), 10, 75,
                      gradeInfo[grade].second);
 
             // Score
@@ -456,7 +455,7 @@ int main(void) {
               DrawText(judgeStr.c_str(),
                        WINDOW_HEIGHT / 4 -
                            MeasureText(judgeStr.c_str(), 70) / 2,
-                       WINDOW_HEIGHT / 2 - (75 * 3) + (75 * i), 70,
+                       WINDOW_HEIGHT / 2 - 225 + (75 * i), 70,
                        judgementInfo[j].second);
             }
 
@@ -467,6 +466,21 @@ int main(void) {
             DrawLine(WINDOW_WIDTH / 4 - WINDOW_WIDTH / 6, WINDOW_HEIGHT - 250,
                      WINDOW_WIDTH / 4 + WINDOW_WIDTH / 6, WINDOW_HEIGHT - 250,
                      WHITE);
+
+            for (i = 0; i < 3; i++) {
+              Judgement j = (Judgement)judges[i];
+              int hitWindow = hitWindows[i];
+              int d = (double)hitWindow / (int)JudgementHitWindow::MISS * 150;
+              int y1 = WINDOW_HEIGHT - 250 - d, y2 = WINDOW_HEIGHT - 250 + d;
+
+              DrawLine(WINDOW_WIDTH / 4 - WINDOW_WIDTH / 6, y1,
+                       WINDOW_WIDTH / 4 + WINDOW_WIDTH / 6, y1,
+                       judgementInfo[j].second);
+              DrawLine(WINDOW_WIDTH / 4 - WINDOW_WIDTH / 6, y2,
+                       WINDOW_WIDTH / 4 + WINDOW_WIDTH / 6, y2,
+                       judgementInfo[j].second);
+            }
+
             for (i = 0; i < hits.size(); i++) {
               DrawCircle((double)WINDOW_WIDTH / 4 - (double)WINDOW_WIDTH / 6 +
                              10 +
@@ -479,16 +493,11 @@ int main(void) {
             }
 
             // Accuracy
-            const char *accNumStr = TextFormat("%.2f", acc);
-            char accStr[6];
-            for (i = 0; i < 4; i++)
-              accStr[i] = accNumStr[i];
-            accStr[4] = '%';
-            accStr[5] = '\0';
-            DrawText(accStr,
+            string accStr = format("{:.2f}", acc) + "%";
+            DrawText(accStr.c_str(),
                      WINDOW_WIDTH / 2 + WINDOW_WIDTH / 4 -
-                         MeasureText("00.00%", 50) / 2,
-                     WINDOW_HEIGHT / 2 - 200, 80, WHITE);
+                         MeasureText(accStr.c_str(), 80) / 2,
+                     WINDOW_HEIGHT / 2 - 300, 80, WHITE);
 
             // Grade
             char gradeStr[2];
@@ -497,7 +506,7 @@ int main(void) {
             DrawText(gradeStr,
                      WINDOW_WIDTH / 2 + WINDOW_WIDTH / 4 -
                          MeasureText("S", 500) / 2,
-                     WINDOW_HEIGHT / 2 - 100, 500, gradeInfo[grade].second);
+                     WINDOW_HEIGHT / 2 - 250, 500, gradeInfo[grade].second);
           },
           [&]() {
             if (IsKeyPressed(KEY_ESCAPE))
