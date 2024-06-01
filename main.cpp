@@ -98,23 +98,22 @@ int main(void) {
     if (judge == Judgement::GHOST)
       return judge;
 
+    hits[hitCount].judgement = judge;
+    hits[hitCount].hitDiff = hitDiff;
+    hitCount++;
+
     if (judge != Judgement::MISS) {
       if (judge != Judgement::GREAT) {
-        prevGoodBadHit = hitCount;
+        prevGoodBadHit = hitCount - 1;
         diffUpdated = timePlayed;
       }
 
       combo++;
 
-      score += (double)judge * scoreMultiplier;
+      score += (double)judge * scoreMultiplier * ((double)combo / hitCount);
     } else
       combo = 0;
 
-    hits[hitCount].judgement = judge;
-    hits[hitCount].hitDiff = hitDiff;
-    hitCount++;
-
-    int i;
     accScore += (int)judge;
     acc = (double)accScore / hitCount;
     grade = calcGrade(acc);
@@ -150,8 +149,9 @@ int main(void) {
   auto startMap = [&](Beatmap *beatmap) {
     currentBeatmap = beatmap;
     music = LoadMusicStream(beatmap->musicPath.c_str());
-    notes = beatmap->notes;
-    hits.resize(notes.size() + beatmap->longNoteCount);
+    auto noteData = beatmap->loadNotes();
+    notes = noteData.first;
+    hits.resize(notes.size() + noteData.second);
     initState();
     currentScreen = GAMEPLAY_SCREEN;
   };
@@ -335,8 +335,8 @@ int main(void) {
 
               if (wait <= 0) {
                 if (stop) {
-                  currentScreen = RESULT_SCREEN;
                   StopMusicStream(music);
+                  currentScreen = RESULT_SCREEN;
                 }
 
                 wait = 0;

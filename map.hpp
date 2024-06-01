@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace std;
@@ -22,10 +23,12 @@ public:
 class Beatmap {
 public:
   string title, artist, creator, diffName, musicPath;
+  path filePath;
   int bpm, longNoteCount = 0;
-  vector<Note> notes;
 
-  Beatmap(path filePath);
+  pair<vector<Note>, int> loadNotes();
+
+  Beatmap(path _filePath);
 };
 
 class Mapset {
