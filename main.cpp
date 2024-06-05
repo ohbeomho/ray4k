@@ -348,10 +348,11 @@ int main(void) {
                 PlayMusicStream(music);
               }
 
-              if (!pause)
+              if (!pause) {
                 UpdateMusicStream(music);
+              }
 
-              timePlayed += frameTime;
+              timePlayed = GetMusicPlayedTime(music);
             }
 
             if (hitCount >= hits.size() && !stop) {
@@ -366,8 +367,9 @@ int main(void) {
               // Resume after 0.4s delay
               if (pause)
                 wait = 0.4f;
-              else
+              else {
                 pause = true;
+              }
             }
 
             if (pause)
