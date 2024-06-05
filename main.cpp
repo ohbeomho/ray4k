@@ -352,7 +352,7 @@ int main(void) {
                 UpdateMusicStream(music);
               }
 
-              timePlayed = GetMusicPlayedTime(music);
+              timePlayed = GetMusicTimePlayed(music);
             }
 
             if (hitCount >= hits.size() && !stop) {
